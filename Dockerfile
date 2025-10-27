@@ -1,5 +1,5 @@
 # Use Maven with OpenJDK 8 to build the application
-FROM maven:3.8.6-openjdk-8 AS build
+FROM maven:3.8-openjdk-18 AS build
 
 # Set working directory
 WORKDIR /app
