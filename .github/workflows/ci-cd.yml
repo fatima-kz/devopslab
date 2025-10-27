@@ -48,7 +48,7 @@ jobs:
         mvn dependency:go-offline -B
         
     - name: 📊 Upload Build Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: compiled-classes
         path: target/classes/
