@@ -140,7 +140,7 @@ jobs:
         
     - name: 📊 Upload Security Scan Results
       if: github.event.inputs.test_type == 'full'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: docker-security-scan
         path: trivy-results.txt
