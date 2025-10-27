@@ -5,11 +5,14 @@ FROM maven:3.8.6-openjdk-8 AS build
 WORKDIR /app
 
 # Copy Maven wrapper and pom.xml first (for better layer caching)
+
 COPY pom.xml .
 COPY src ./src
 
 # Build the application
 RUN mvn clean package -DskipTests
+
+
 
 # Use OpenJDK 8 runtime for the final image
 FROM openjdk:8-jre-alpine
@@ -27,4 +30,5 @@ COPY --from=build /app/target/TodoDemo-0.0.1-SNAPSHOT.war app.jar
 EXPOSE 8080
 
 # Run the application
+
 CMD ["java", "-jar", "app.jar"]
