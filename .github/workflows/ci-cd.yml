@@ -218,7 +218,7 @@ jobs:
     - name: 🐳 Run Docker Image Security Scan
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+        image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
         format: 'table'
         exit-code: '0'
       continue-on-error: true
