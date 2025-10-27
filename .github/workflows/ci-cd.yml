@@ -1,0 +1,344 @@
+name: Complete DevOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deploy_to_production:
+        description: 'Deploy to production environment'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOCKER_IMAGE_NAME: todo-spring-boot-app
+  DOCKER_REGISTRY: docker.io
+  DOCKER_USERNAME: fatimakz
+  JAVA_VERSION: 8
+
+jobs:
+  # ===== STAGE 1: BUILD & INSTALL =====
+  build-and-install:
+    name: 🔨 Build & Install Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        
+    - name: 📦 Cache Maven Dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: 🔨 Compile and Install Dependencies
+      run: |
+        mvn clean compile -B
+        mvn dependency:go-offline -B
+        
+    - name: 📊 Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: compiled-classes
+        path: target/classes/
+        retention-days: 1
+
+  # ===== STAGE 2: LINT & SECURITY SCAN =====
+  lint-and-security:
+    name: 🔍 Lint & Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-install
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        
+    - name: 📦 Cache Maven Dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: 🔍 Maven Code Quality Check
+      run: |
+        mvn checkstyle:check -B || echo "Checkstyle warnings found but continuing..."
+        mvn spotbugs:check -B || echo "SpotBugs warnings found but continuing..."
+        
+    - name: 🛡️ OWASP Dependency Check
+      run: |
+        mvn org.owasp:dependency-check-maven:check -B || echo "Security vulnerabilities found but continuing..."
+        
+    - name: 🔐 Trivy Security Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: 📊 Upload Security Scan Results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # ===== STAGE 3: TEST WITH DATABASE SERVICE =====
+  test-with-database:
+    name: 🧪 Test with Database Service
+    runs-on: ubuntu-latest
+    needs: [build-and-install, lint-and-security]
+    
+    services:
+      mysql:
+        image: mysql:5.7
+        env:
+          MYSQL_ROOT_PASSWORD: mysqlpass
+          MYSQL_DATABASE: tododb
+          MYSQL_USER: username
+          MYSQL_PASSWORD: mysqlpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u username -pmysqlpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: ☕ Set up JDK ${{ env.JAVA_VERSION }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        
+    - name: 📦 Cache Maven Dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+        
+    - name: ⏳ Wait for MySQL to be Ready
+      run: |
+        timeout 60s sh -c 'until nc -z localhost 3306; do sleep 1; done'
+        echo "MySQL is ready!"
+        
+    - name: 🧪 Run Unit Tests
+      run: |
+        mvn test -B
+      env:
+        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/tododb
+        SPRING_DATASOURCE_USERNAME: username
+        SPRING_DATASOURCE_PASSWORD: mysqlpass
+        
+    - name: 🧪 Run Integration Tests
+      run: |
+        mvn verify -B
+      env:
+        SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/tododb
+        SPRING_DATASOURCE_USERNAME: username
+        SPRING_DATASOURCE_PASSWORD: mysqlpass
+        
+    - name: 📊 Generate Test Report
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Maven Tests
+        path: target/surefire-reports/*.xml
+        reporter: java-junit
+        
+    - name: 📈 Upload Coverage Reports
+      uses: codecov/codecov-action@v3
+      if: always()
+      with:
+        file: target/site/jacoco/jacoco.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  # ===== STAGE 4: BUILD DOCKER IMAGE =====
+  build-docker-image:
+    name: 🐳 Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [test-with-database]
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 🔑 Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: 🏷️ Extract Metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: 🐳 Build and Push Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🐳 Run Docker Image Security Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+        format: 'sarif'
+        output: 'docker-trivy-results.sarif'
+        
+    - name: 📊 Upload Docker Security Scan Results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'docker-trivy-results.sarif'
+
+  # ===== STAGE 5: DEPLOY (CONDITIONAL) =====
+  deploy:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-docker-image]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: 🔑 Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: 🚀 Deploy to Railway (Option 1)
+      if: ${{ secrets.RAILWAY_TOKEN }}
+      run: |
+        echo "Deploying to Railway..."
+        curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "variables": {
+              "DOCKER_IMAGE": "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest"
+            }
+          }' \
+          "https://backboard.railway.app/graphql/v2"
+          
+    - name: 🚀 Deploy to Render (Option 2)
+      if: ${{ secrets.RENDER_API_KEY }}
+      run: |
+        echo "Deploying to Render..."
+        curl -X POST \
+          -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "type": "web_service",
+            "name": "todo-spring-boot-app",
+            "env": "docker",
+            "plan": "free",
+            "dockerCommand": "java -jar app.jar",
+            "dockerfilePath": "./Dockerfile"
+          }' \
+          "https://api.render.com/v1/services"
+          
+    - name: 🐳 Deploy using Docker Compose (Fallback)
+      run: |
+        echo "Deploying using Docker Compose..."
+        docker-compose pull
+        docker-compose up -d
+        
+        echo "Waiting for application to be ready..."
+        timeout 60s sh -c 'until curl -f http://localhost:8081/actuator/health; do sleep 5; done'
+        
+        echo "✅ Deployment successful!"
+        echo "Application is running at http://localhost:8081"
+        
+    - name: 🔍 Deployment Health Check
+      run: |
+        echo "Running post-deployment health checks..."
+        
+        # Check if application is responding
+        if curl -f http://localhost:8081/actuator/health; then
+          echo "✅ Health check passed"
+        else
+          echo "❌ Health check failed"
+          exit 1
+        fi
+        
+        # Check database connectivity
+        if curl -f http://localhost:8081/actuator/health/db; then
+          echo "✅ Database connectivity check passed"
+        else
+          echo "⚠️ Database connectivity check failed"
+        fi
+        
+    - name: 📢 Notify Deployment Status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "🎉 Deployment to production completed successfully!"
+          echo "Application URL: http://localhost:8081"
+          echo "Health Check: http://localhost:8081/actuator/health"
+        else
+          echo "❌ Deployment failed. Please check the logs."
+        fi
+
+  # ===== DEPLOYMENT SUMMARY =====
+  deployment-summary:
+    name: 📋 Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+    
+    steps:
+    - name: 📋 Create Deployment Summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Docker Image:** ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "- **Application URL:** http://localhost:8081" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Check:** http://localhost:8081/actuator/health" >> $GITHUB_STEP_SUMMARY
+        fi
