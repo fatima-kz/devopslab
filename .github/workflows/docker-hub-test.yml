@@ -1,0 +1,165 @@
+name: Docker Hub Integration Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of Docker test to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+        - 'build-only'
+        - 'build-and-push'
+        - 'full'
+  push:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'scripts/test-docker-hub.*'
+
+env:
+  DOCKER_IMAGE_NAME: todo-spring-boot-app
+  DOCKER_REGISTRY: docker.io
+
+jobs:
+  test-docker-integration:
+    name: 🐳 Test Docker Hub Integration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout Code
+      uses: actions/checkout@v4
+      
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 🔑 Log in to Docker Hub
+      if: github.event.inputs.test_type != 'build-only'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: 🏷️ Extract Metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix=test-
+          type=raw,value=integration-test
+          
+    - name: 🔨 Build Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🧪 Test Image Locally
+      run: |
+        echo "🧪 Testing Docker image locally..."
+        
+        # Start container in background
+        CONTAINER_ID=$(docker run -d -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:integration-test)
+        echo "Started container: $CONTAINER_ID"
+        
+        # Wait for application to start
+        echo "⏳ Waiting for application to start..."
+        timeout 60s sh -c 'until curl -f http://localhost:8080/actuator/health 2>/dev/null; do sleep 5; done' || {
+          echo "❌ Application failed to start within 60 seconds"
+          docker logs $CONTAINER_ID
+          exit 1
+        }
+        
+        echo "✅ Application started successfully!"
+        
+        # Test basic endpoints
+        echo "🔍 Testing application endpoints..."
+        
+        # Health check
+        if curl -f http://localhost:8080/actuator/health; then
+          echo "✅ Health endpoint working"
+        else
+          echo "❌ Health endpoint failed"
+          exit 1
+        fi
+        
+        # Main application endpoint
+        if curl -f http://localhost:8080/ -o /dev/null -s; then
+          echo "✅ Main application endpoint working"
+        else
+          echo "⚠️ Main application endpoint may not be ready"
+        fi
+        
+        # Clean up
+        docker stop $CONTAINER_ID
+        docker rm $CONTAINER_ID
+        echo "🧹 Cleaned up test container"
+        
+    - name: 🐳 Push to Docker Hub
+      if: github.event.inputs.test_type != 'build-only'
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: 🔍 Verify Docker Hub Push
+      if: github.event.inputs.test_type != 'build-only'
+      run: |
+        echo "🔍 Verifying image was pushed to Docker Hub..."
+        
+        # Wait a moment for the push to propagate
+        sleep 10
+        
+        # Try to pull the image we just pushed
+        docker pull ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:integration-test
+        
+        echo "✅ Successfully pulled image from Docker Hub!"
+        
+        # Verify image metadata
+        docker inspect ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:integration-test | jq '.[0].Config.Labels'
+        
+    - name: 🛡️ Security Scan
+      if: github.event.inputs.test_type == 'full'
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:integration-test
+        format: 'table'
+        output: 'trivy-results.txt'
+        
+    - name: 📊 Upload Security Scan Results
+      if: github.event.inputs.test_type == 'full'
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-security-scan
+        path: trivy-results.txt
+        
+    - name: 🎉 Integration Test Summary
+      run: |
+        echo "## 🐳 Docker Hub Integration Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "- **Test Type:** ${{ github.event.inputs.test_type || 'automatic' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Docker Image:** ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Tags:** $(echo '${{ steps.meta.outputs.tags }}' | tr '\n' ', ')" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ github.event.inputs.test_type }}" != "build-only" ]]; then
+          echo "- **Push Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Hub URL:** [View Repository](https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }})" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [[ "${{ github.event.inputs.test_type }}" == "full" ]]; then
+          echo "- **Security Scan:** ✅ Completed" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "- **Test Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY

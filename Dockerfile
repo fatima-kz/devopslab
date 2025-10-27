@@ -1,5 +1,5 @@
 # Use Maven with OpenJDK 8 to build the application
-FROM maven:3.6.3-openjdk-8-slim AS build
+FROM maven:3.8.6-openjdk-8 AS build
 
 # Set working directory
 WORKDIR /app
@@ -13,6 +13,9 @@ RUN mvn clean package -DskipTests
 
 # Use OpenJDK 8 runtime for the final image
 FROM openjdk:8-jre-alpine
+
+# Install curl for health checks
+RUN apk add --no-cache curl
 
 # Set working directory
 WORKDIR /app
