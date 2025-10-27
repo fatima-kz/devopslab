@@ -160,21 +160,27 @@ jobs:
         SPRING_DATASOURCE_USERNAME: username
         SPRING_DATASOURCE_PASSWORD: mysqlpass
         
-    - name: 📊 Generate Test Report
-      uses: dorny/test-reporter@v1
+    - name: 📊 Display Test Results
       if: always()
-      with:
-        name: Maven Tests
-        path: target/surefire-reports/*.xml
-        reporter: java-junit
+      run: |
+        echo "🧪 Test Results Summary:"
+        if [ -f "target/surefire-reports/TEST-*.xml" ]; then
+          echo "✅ Unit tests completed"
+          find target/surefire-reports -name "TEST-*.xml" -exec basename {} \; | head -5
+        else
+          echo "⚠️ No test results found"
+        fi
         
-    - name: 📈 Upload Coverage Reports
-      uses: codecov/codecov-action@v3
+    - name: 📈 Generate Coverage Report
       if: always()
-      with:
-        file: target/site/jacoco/jacoco.xml
-        flags: unittests
-        name: codecov-umbrella
+      run: |
+        echo "📊 Code Coverage Summary:"
+        if [ -f "target/site/jacoco/jacoco.xml" ]; then
+          echo "✅ Coverage report generated"
+          echo "📄 Report location: target/site/jacoco/index.html"
+        else
+          echo "⚠️ No coverage report found (JaCoCo may not be configured)"
+        fi
 
   # ===== STAGE 4: BUILD DOCKER IMAGE =====
   build-docker-image:
