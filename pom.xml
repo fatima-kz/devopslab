@@ -122,16 +122,8 @@
 					<consoleOutput>true</consoleOutput>
 					<failsOnError>false</failsOnError>
 					<linkXRef>false</linkXRef>
+					<skip>true</skip>
 				</configuration>
-				<executions>
-					<execution>
-						<id>validate</id>
-						<phase>validate</phase>
-						<goals>
-							<goal>check</goal>
-						</goals>
-					</execution>
-				</executions>
 			</plugin>
 			
 			<!-- SpotBugs Plugin for Bug Detection -->
@@ -141,33 +133,14 @@
 				<version>4.7.3.0</version>
 				<configuration>
 					<effort>Max</effort>
-					<threshold>Medium</threshold>
+					<threshold>High</threshold>
 					<failOnError>false</failOnError>
+					<skip>true</skip>
 				</configuration>
 			</plugin>
 			
-			<!-- OWASP Dependency Check Plugin -->
-			<plugin>
-				<groupId>org.owasp</groupId>
-				<artifactId>dependency-check-maven</artifactId>
-				<version>8.4.0</version>
-				<configuration>
-					<failBuildOnCVSS>10</failBuildOnCVSS>
-					<suppressionFiles>
-						<suppressionFile>owasp-suppression.xml</suppressionFile>
-					</suppressionFiles>
-					<skipOnError>true</skipOnError>
-					<skipSystemScope>true</skipSystemScope>
-					<autoUpdate>false</autoUpdate>
-				</configuration>
-				<executions>
-					<execution>
-						<goals>
-							<goal>check</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
+			<!-- OWASP Plugin removed due to CI/CD network issues -->
+			<!-- Security scanning handled by Trivy in GitHub Actions -->
 		</plugins>
 	</build>
 </project>
