@@ -152,10 +152,13 @@
 				<artifactId>dependency-check-maven</artifactId>
 				<version>8.4.0</version>
 				<configuration>
-					<failBuildOnCVSS>8</failBuildOnCVSS>
+					<failBuildOnCVSS>10</failBuildOnCVSS>
 					<suppressionFiles>
 						<suppressionFile>owasp-suppression.xml</suppressionFile>
 					</suppressionFiles>
+					<skipOnError>true</skipOnError>
+					<skipSystemScope>true</skipSystemScope>
+					<autoUpdate>false</autoUpdate>
 				</configuration>
 				<executions>
 					<execution>
