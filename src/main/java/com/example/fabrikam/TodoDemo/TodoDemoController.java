@@ -6,6 +6,8 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.util.ArrayList;
 
@@ -25,6 +27,7 @@ public class TodoDemoController {
     }
 
     @RequestMapping("/add")
+    @CacheEvict(value = "todos", allEntries = true)
     public String addTodo(@ModelAttribute TodoItem requestItem) {
         TodoItem item = new TodoItem(requestItem.getCategory(), requestItem.getName());
         repository.save(item);
@@ -32,6 +35,7 @@ public class TodoDemoController {
     }
 
     @RequestMapping("/update")
+    @CacheEvict(value = "todos", allEntries = true)
     public String updateTodo(@ModelAttribute TodoListViewModel requestItems) {
         for (TodoItem requestItem : requestItems.getTodoList() ) {
              TodoItem item = new TodoItem(requestItem.getCategory(), requestItem.getName());

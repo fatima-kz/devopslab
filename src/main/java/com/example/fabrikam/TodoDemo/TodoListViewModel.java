@@ -1,10 +1,13 @@
 package com.example.fabrikam.TodoDemo;
 
 import java.util.ArrayList;
+import java.io.Serializable;
 
 import javax.validation.Valid;
 
-public class TodoListViewModel {
+public class TodoListViewModel implements Serializable {
+
+	private static final long serialVersionUID = 1L;
 
 	@Valid
 	private ArrayList<TodoItem> todoList = new ArrayList<TodoItem>();

@@ -1,30 +1,21 @@
-# Use Maven with OpenJDK 8 to build the application
-FROM maven:3.8.6-openjdk-8 AS build
-
-# Set working directory
+# Stage 1: Download dependencies (better caching)
+FROM maven:3.8.6-openjdk-8 AS dependencies
 WORKDIR /app
-
-# Copy Maven wrapper and pom.xml first (for better layer caching)
 COPY pom.xml .
-COPY src ./src
+RUN mvn dependency:go-offline -B
 
-# Build the application
+# Stage 2: Build application
+FROM maven:3.8.6-openjdk-8 AS build
+WORKDIR /app
+COPY pom.xml .
+COPY --from=dependencies /root/.m2 /root/.m2
+COPY src ./src
 RUN mvn clean package -DskipTests
 
-# Use OpenJDK 8 runtime for the final image
-FROM openjdk:8-jre-alpine
-
-# Install curl for health checks
+# Stage 3: Runtime
+FROM eclipse-temurin:8-jre-alpine
 RUN apk add --no-cache curl
-
-# Set working directory
 WORKDIR /app
-
-# Copy the built WAR file from the build stage
 COPY --from=build /app/target/TodoDemo-0.0.1-SNAPSHOT.war app.jar
-
-# Expose port 8080
 EXPOSE 8080
-
-# Run the application
 CMD ["java", "-jar", "app.jar"]
