@@ -60,11 +60,11 @@ resource "aws_security_group" "rds" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.eks_nodes.id]
-    description     = "Allow MySQL access from EKS nodes"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "Allow MySQL access from VPC"
   }
 
   egress {

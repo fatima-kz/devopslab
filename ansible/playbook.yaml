@@ -1,0 +1,69 @@
+---
+# Main Ansible Playbook for Todo App Infrastructure Configuration
+# This playbook configures the local environment and prepares for Kubernetes deployment
+
+- name: Configure Local Environment for Kubernetes Deployment
+  hosts: local
+  gather_facts: true
+  become: false
+  
+  vars:
+    eks_cluster_name: "todo-app-cluster"
+    aws_region: "us-east-1"
+    app_namespace: "todo-app"
+    
+  tasks:
+    - name: Display playbook start message
+      debug:
+        msg: "Starting Todo App configuration on {{ inventory_hostname }}"
+    
+    - name: Check if kubectl is installed
+      command: kubectl version --client
+      register: kubectl_check
+      ignore_errors: true
+      changed_when: false
+    
+    - name: Display kubectl version
+      debug:
+        msg: "kubectl is installed: {{ kubectl_check.stdout }}"
+      when: kubectl_check.rc == 0
+    
+    - name: Warn if kubectl is not installed
+      debug:
+        msg: "WARNING: kubectl is not installed. Please install it manually."
+      when: kubectl_check.rc != 0
+    
+    - name: Configure kubectl for EKS cluster
+      command: "aws eks update-kubeconfig --region {{ aws_region }} --name {{ eks_cluster_name }}"
+      register: kubectl_config
+      changed_when: "'Updated context' in kubectl_config.stderr"
+      when: kubectl_check.rc == 0
+    
+    - name: Verify kubectl connection to cluster
+      command: kubectl cluster-info
+      register: cluster_info
+      ignore_errors: true
+      changed_when: false
+      when: kubectl_check.rc == 0
+    
+    - name: Display cluster info
+      debug:
+        msg: "{{ cluster_info.stdout }}"
+      when: kubectl_check.rc == 0 and cluster_info.rc == 0
+    
+    - name: Create namespace for todo app
+      command: "kubectl create namespace {{ app_namespace }}"
+      register: namespace_create
+      failed_when: 
+        - namespace_create.rc != 0
+        - "'AlreadyExists' not in namespace_create.stderr"
+      changed_when: "'created' in namespace_create.stdout"
+      when: kubectl_check.rc == 0
+    
+    - name: Display configuration summary
+      debug:
+        msg:
+          - "EKS Cluster: {{ eks_cluster_name }}"
+          - "Region: {{ aws_region }}"
+          - "Namespace: {{ app_namespace }}"
+          - "kubectl configured: {{ kubectl_check.rc == 0 }}"

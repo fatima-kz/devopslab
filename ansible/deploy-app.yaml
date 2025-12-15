@@ -1,0 +1,95 @@
+---
+# Ansible Playbook to Deploy Todo App to Kubernetes
+# This playbook deploys the complete application stack to EKS
+
+- name: Deploy Todo Application to Kubernetes
+  hosts: local
+  gather_facts: no
+  
+  vars:
+    app_namespace: "todo-app"
+    k8s_manifests_dir: "k8s"
+    
+  tasks:
+    - name: Display deployment start message
+      debug:
+        msg: "Starting deployment of Todo App to Kubernetes cluster"
+    
+    - name: Ensure namespace exists
+      command: "kubectl create namespace {{ app_namespace }}"
+      register: namespace_result
+      failed_when:
+        - namespace_result.rc != 0
+        - "'AlreadyExists' not in namespace_result.stderr"
+      changed_when: "'created' in namespace_result.stdout"
+    
+    - name: Apply ConfigMap and Secrets
+      command: "kubectl apply -f {{ k8s_manifests_dir }}/configmap.yaml"
+      register: configmap_result
+      changed_when: "'configured' in configmap_result.stdout or 'created' in configmap_result.stdout"
+    
+    - name: Display ConfigMap status
+      debug:
+        msg: "{{ configmap_result.stdout }}"
+    
+    - name: Deploy Redis and Todo App
+      command: "kubectl apply -f {{ k8s_manifests_dir }}/deployment.yaml"
+      register: deployment_result
+      changed_when: "'configured' in deployment_result.stdout or 'created' in deployment_result.stdout"
+    
+    - name: Display Deployment status
+      debug:
+        msg: "{{ deployment_result.stdout }}"
+    
+    - name: Create Services (LoadBalancer and ClusterIP)
+      command: "kubectl apply -f {{ k8s_manifests_dir }}/service.yaml"
+      register: service_result
+      changed_when: "'configured' in service_result.stdout or 'created' in service_result.stdout"
+    
+    - name: Display Service status
+      debug:
+        msg: "{{ service_result.stdout }}"
+    
+    - name: Wait for deployments to be ready
+      command: "kubectl rollout status deployment/{{ item }} -n {{ app_namespace }}"
+      loop:
+        - redis
+        - todo-app
+      register: rollout_status
+      changed_when: false
+    
+    - name: Get pod status
+      command: "kubectl get pods -n {{ app_namespace }}"
+      register: pods_status
+      changed_when: false
+    
+    - name: Display pod status
+      debug:
+        msg: "{{ pods_status.stdout_lines }}"
+    
+    - name: Get service details
+      command: "kubectl get svc -n {{ app_namespace }}"
+      register: service_details
+      changed_when: false
+    
+    - name: Display service details
+      debug:
+        msg: "{{ service_details.stdout_lines }}"
+    
+    - name: Get LoadBalancer URL
+      shell: "kubectl get svc todo-app-service -n {{ app_namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
+      register: lb_url
+      changed_when: false
+      failed_when: false
+    
+    - name: Display application access information
+      debug:
+        msg:
+          - "================================================"
+          - "Todo App Deployment Complete!"
+          - "================================================"
+          - "Namespace: {{ app_namespace }}"
+          - "LoadBalancer URL: {{ lb_url.stdout if lb_url.stdout else 'Pending...' }}"
+          - "Access your app at: http://{{ lb_url.stdout if lb_url.stdout else 'PENDING' }}"
+          - "================================================"
+      when: lb_url.rc == 0

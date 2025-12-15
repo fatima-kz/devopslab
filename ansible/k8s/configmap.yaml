@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-app-config
+  namespace: todo-app
+data:
+  # Database Configuration
+  # Update these values with your actual RDS endpoint from terraform output
+  SPRING_DATASOURCE_URL: "jdbc:mysql://todo-app-mysql.capkocm88jfm.us-east-1.rds.amazonaws.com:3306/tododb?useSSL=false&allowPublicKeyRetrieval=true"
+  SPRING_DATASOURCE_USERNAME: "admin"
+  
+  # Redis Configuration
+  SPRING_REDIS_HOST: "redis-service"
+  SPRING_REDIS_PORT: "6379"
+  
+  # JPA Configuration
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+  SPRING_JPA_SHOW_SQL: "false"
+  
+  # Logging
+  LOGGING_LEVEL_ROOT: "INFO"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: todo-app-secrets
+  namespace: todo-app
+type: Opaque
+stringData:
+  # Database Password
+  SPRING_DATASOURCE_PASSWORD: "TodoApp2025!"
