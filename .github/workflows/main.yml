@@ -142,22 +142,38 @@ jobs:
       run: terraform validate
     
     - name: Terraform Plan
-      run: terraform plan -out=tfplan
-      env:
-        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-    
-    - name: Terraform Apply
-      run: terraform apply -auto-approve tfplan || echo "Infrastructure already exists, continuing..."
+      id: plan
+      run: |
+        terraform plan -out=tfplan -detailed-exitcode
+        echo "exitcode=$?" >> $GITHUB_OUTPUT
       env:
         TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
       continue-on-error: true
+    
+    - name: Check if changes needed
+      id: check-changes
+      run: |
+        if [ "${{ steps.plan.outputs.exitcode }}" == "2" ]; then
+          echo "changes_needed=true" >> $GITHUB_OUTPUT
+        else
+          echo "changes_needed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Terraform Apply
+      if: steps.check-changes.outputs.changes_needed == 'true'
+      run: terraform apply -auto-approve tfplan
+      env:
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
+    
+    - name: Skip Terraform Apply
+      if: steps.check-changes.outputs.changes_needed == 'false'
+      run: echo "No infrastructure changes needed, skipping apply..."
     
     - name: Save Terraform Outputs
       id: tf-outputs
       run: |
-        echo "rds_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null || echo 'todo-app-mysql.capkocm88jfm.us-east-1.rds.amazonaws.com:3306')" >> $GITHUB_OUTPUT
-        echo "eks_cluster_name=$(terraform output -raw eks_cluster_name 2>/dev/null || echo 'todo-app-cluster')" >> $GITHUB_OUTPUT
-      continue-on-error: true
+        echo "rds_endpoint=$(terraform output -raw rds_endpoint)" >> $GITHUB_OUTPUT
+        echo "eks_cluster_name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
 
   # Stage 5: Deploy to Kubernetes with Ansible
   ansible-deploy:
