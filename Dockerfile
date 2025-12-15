@@ -14,7 +14,7 @@ RUN mvn clean package -DskipTests
 
 # Stage 3: Runtime
 FROM eclipse-temurin:8-jre-alpine
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl=8.11.0-r2
 WORKDIR /app
 COPY --from=build /app/target/TodoDemo-0.0.1-SNAPSHOT.war app.jar
 EXPOSE 8080
