@@ -34,6 +34,42 @@
 ### GitHub Repository Secrets
 - `DOCKER_USERNAME`: Docker Hub username (fatimakz)
 - `DOCKER_PASSWORD`: Docker Hub access token for authentication
+# DevOps Report
+
+## Technologies Used
+
+- **Java 8** with Spring Boot 1.5.3
+- **MySQL 5.7** for database
+- **Docker** and Docker Compose for containerization
+- **GitHub Actions** for CI/CD pipeline
+- **Docker Hub** for registry
+- **Trivy** for security scanning
+- **Maven** for build automation
+- **Spring Boot Actuator** for health monitoring
+
+## Pipeline Design
+
+### 5-Stage CI/CD Pipeline
+
+1. **Build & Install**: Compile code and download Maven dependencies
+2. **Lint & Security**: Code validation and Trivy security scanning  
+3. **Test**: Run tests with MySQL database service
+4. **Build Docker Image**: Create and push multi-stage Docker image
+5. **Deploy**: Conditional deployment on main branch
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Build &   │    │   Lint &    │    │    Test     │    │   Build     │    │   Deploy    │
+│   Install   │───▶│  Security   │───▶│  with DB    │───▶│   Docker    │───▶│ (main only) │
+│             │    │             │    │             │    │   Image     │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+## Secret Management Strategy
+
+### GitHub Repository Secrets
+- `DOCKER_USERNAME`: Docker Hub username (fatimakz)
+- `DOCKER_PASSWORD`: Docker Hub access token for authentication
 
 ### Security Practices
 - No hardcoded credentials in code
