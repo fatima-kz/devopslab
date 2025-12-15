@@ -37,9 +37,11 @@ jobs:
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: todo-app-jar
-        path: target/*.jar
+        path: target/*.war
+        if-no-files-found: warn
 
   # Stage 2: Security & Linting
   security-scan:
